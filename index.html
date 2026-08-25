@@ -52,8 +52,8 @@
   </select>
   <label>Fabricante</label>
   <select id="fFab"><option value="">Todos</option></select>
-  <label>Família de produto</label>
-  <select id="fFam"><option value="">Todas</option></select>
+  <label>Segmento (família de produto)</label>
+  <select id="fFam"><option value="">Todos</option></select>
   <div class="tot" id="fTot">—</div>
   <label class="mini"><input type="checkbox" id="fHeat" style="width:auto"> 🔥 destacar por volume</label>
   <span class="lnk" id="fLimpar">↺ limpar filtro</span>
@@ -147,10 +147,21 @@ function aplicarFiltro(){
 function atualizarLegenda(){
   const cntCity={MR1:0,MR2:0,MR3:0}, cntEmp={MR1:0,MR2:0,MR3:0};
   Object.entries(REG).forEach(([k,d])=>{cntCity[d.mr]++; cntEmp[d.mr]+=(FCOUNTS[k]||0);});
+  // região líder no filtro atual
+  const ord=['MR1','MR2','MR3'].sort((a,b)=>cntEmp[b]-cntEmp[a]);
+  const lider=ord[0], total=cntEmp.MR1+cntEmp.MR2+cntEmp.MR3;
+  const famSel=document.getElementById('fFam');
+  const segNome=famSel.value===''?'todos os segmentos':famSel.options[famSel.selectedIndex].textContent.replace(/\s*\(\d+\)$/,'');
   const el=document.getElementById('legend');
-  el.innerHTML='<div style="font-weight:bold;margin-bottom:4px">Macrorregiões (clique p/ filtrar)</div>'+
+  let head='';
+  if(total>0){
+    const pct=Math.round(100*cntEmp[lider]/total);
+    head=`<div style="background:${MRC[lider]}22;border-left:4px solid ${MRC[lider]};border-radius:4px;padding:4px 7px;margin-bottom:6px;font-size:12px">
+      🏆 <b>${lider}</b> lidera em <b>${segNome}</b><br><span class="k">${cntEmp[lider]} de ${total} emplac. (${pct}%)</span></div>`;
+  }
+  el.innerHTML=head+'<div style="font-weight:bold;margin-bottom:4px">Macrorregiões (clique p/ filtrar)</div>'+
    ['MR1','MR2','MR3'].map(m=>`<div class="lg${shown[m]?'':' off'}" data-mr="${m}"><span class="sw" style="background:${MRC[m]}"></span>
-      <span>${MRNAME[m]}<br><span class="k">${cntCity[m]} cidades · ${cntEmp[m]} emplac.</span></span></div>`).join('');
+      <span>${MRNAME[m]}${m===lider&&total>0?' 🏆':''}<br><span class="k">${cntCity[m]} cidades · <b>${cntEmp[m]}</b> emplac.</span></span></div>`).join('');
   el.querySelectorAll('.lg').forEach(e=>e.onclick=()=>{const m=e.dataset.mr;shown[m]=!shown[m];
     e.classList.toggle('off',!shown[m]); layer.setStyle(style);});
 }
