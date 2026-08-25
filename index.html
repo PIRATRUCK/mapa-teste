@@ -16,9 +16,16 @@
   .row{margin:2px 0}.k{color:#666}
   #search{top:52px;left:12px;width:220px}
   #search input{width:100%;box-sizing:border-box;padding:6px;border:1px solid #ccc;border-radius:5px}
+  #filtro{top:96px;left:12px;width:220px}
+  #filtro b{display:block;margin-bottom:6px;font-size:13px}
+  #filtro label{display:block;color:#666;margin:6px 0 2px;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:.3px}
+  #filtro select{width:100%;box-sizing:border-box;padding:5px;border:1px solid #ccc;border-radius:5px;font-size:12px}
+  #filtro .tot{margin-top:8px;font-size:12px;background:#f5f5f5;border-radius:5px;padding:5px 7px}
+  #filtro .tot b{display:inline;color:#C00000}
+  #filtro .mini{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:#333;cursor:pointer;user-select:none}
+  #filtro .lnk{color:#1e88e5;cursor:pointer;font-size:11px;margin-top:6px;display:inline-block}
   .leaflet-tooltip.city{font-weight:bold}
-  /* rótulo fixo com o nome da cidade sobre a região */
-  .leaflet-tooltip.citylabel{background:transparent;border:none;box-shadow:none;color:#5b5b5b;opacity:.7;font-size:9px;font-weight:500;padding:0;white-space:nowrap;text-shadow:0 0 2px rgba(255,255,255,.8)}
+  .leaflet-tooltip.citylabel{background:transparent;border:none;box-shadow:none;color:#3b3b3b;opacity:.85;font-size:9px;font-weight:600;padding:0;white-space:nowrap;text-shadow:0 0 2px rgba(255,255,255,.9)}
   .leaflet-tooltip.citylabel::before{display:none}
   @media print{ .leaflet-tooltip.citylabel{font-size:11px} }
   .print-btn{float:right;background:#fff;color:#C00000;border:none;border-radius:5px;padding:4px 10px;font-weight:bold;cursor:pointer;font-size:13px;margin-top:-2px}
@@ -26,7 +33,6 @@
   @media print{
     @page{margin:6mm;size:landscape}
     *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    /* esconde tudo que não é a região colorida */
     #search,#info,.print-btn,.leaflet-control-container,.leaflet-tile-pane{display:none!important}
     .titlebar{box-shadow:none}
     #legend{box-shadow:none;border:1px solid #999}
@@ -36,65 +42,134 @@
 <div class="titlebar"><button class="print-btn" onclick="imprimirMapa()">🖨️ Imprimir</button>🧪 PIRATRUCK — Mapa de Regiões (CENÁRIO TESTE) · <span style="font-weight:normal">MR1 verde · MR2 amarelo · MR3 azul</span></div>
 <div id="map"></div>
 <div class="panel" id="search"><input id="q" placeholder="🔎 buscar cidade..." autocomplete="off"></div>
+<div class="panel" id="filtro">
+  <b>🎛️ Filtro de emplacamentos (2026)</b>
+  <label>Marca</label>
+  <select id="fMarca">
+    <option value="T">Todas as marcas</option>
+    <option value="G">Só Guerra (nossa)</option>
+    <option value="C">Só concorrentes</option>
+  </select>
+  <label>Fabricante</label>
+  <select id="fFab"><option value="">Todos</option></select>
+  <label>Família de produto</label>
+  <select id="fFam"><option value="">Todas</option></select>
+  <div class="tot" id="fTot">—</div>
+  <label class="mini"><input type="checkbox" id="fHeat" style="width:auto"> 🔥 destacar por volume</label>
+  <span class="lnk" id="fLimpar">↺ limpar filtro</span>
+</div>
 <div class="panel" id="info"></div>
 <div class="panel" id="legend"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const MRC={MR1:'#43a047',MR2:'#f6c700',MR3:'#1e88e5'};
 const MRNAME={MR1:'MR1 — Campinas/Limeira',MR2:'MR2 — Piracicaba/Araraquara',MR3:'MR3 — Sorocaba/Itapeva'};
-function norm(s){return s.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\./g,' ').replace(/\s+/g,' ').trim();}
+function norm(s){return (''+s).normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\./g,' ').replace(/\s+/g,' ').trim();}
 const map=L.map('map',{preferCanvas:true}).setView([-22.9,-47.6],8);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
   attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
-let REG={},layer,shown={MR1:true,MR2:true,MR3:true},byName={};
+let REG={},layer,shown={MR1:true,MR2:true,MR3:true},byName={},keyByName={};
+let EMPLAC={fabs:[],fams:[],rows:[]};
+let FCOUNTS={}, FMAX=1, HEAT=false, CURKEY=null;
 const info=document.getElementById('info');
-function style(f){const d=REG[norm(f.properties.name)];
+
+function style(f){const key=norm(f.properties.name);const d=REG[key];
   if(!d) return {fillColor:'#000',fillOpacity:0,color:'#bbb',weight:0.4,opacity:0};
   const on=shown[d.mr];
-  return {fillColor:MRC[d.mr],fillOpacity:on?0.72:0.05,color:'#fff',weight:on?1:0.4,opacity:on?1:0.3};}
-function showInfo(d){info.style.display='block';
+  let op=on?0.72:0.05;
+  if(HEAT&&on){const q=FCOUNTS[key]||0; op=q>0?0.18+0.75*(q/FMAX):0.06;}
+  return {fillColor:MRC[d.mr],fillOpacity:op,color:'#fff',weight:on?1:0.4,opacity:on?1:0.3};}
+
+function showInfo(d,key){CURKEY=key;info.style.display='block';
+  const q=FCOUNTS[key]||0;
   info.innerHTML=`<h3>${d.nome}</h3>
    <div class="row"><span class="k">Macrorregião:</span> <b style="color:${MRC[d.mr]}">${d.mr}</b></div>
    <div class="row"><span class="k">Vendedor:</span> <b>${d.vend}</b></div>
-   <div class="row"><span class="k">Pinos (emplac.):</span> <b>${d.pin}</b></div>`;}
-function onEach(f,l){const d=REG[norm(f.properties.name)]; if(!d)return; byName[norm(f.properties.name)]=l;
-  l.on('mouseover',()=>{l.setStyle({weight:3,fillOpacity:0.9}); l.bringToFront(); showInfo(d);});
+   <div class="row"><span class="k">Emplac. no filtro:</span> <b>${q}</b></div>`;}
+
+function onEach(f,l){const key=norm(f.properties.name);const d=REG[key]; if(!d)return;
+  byName[key]=l; keyByName[key]=key;
+  l.on('mouseover',()=>{l.setStyle({weight:3,fillOpacity:0.9}); l.bringToFront(); showInfo(d,key);});
   l.on('mouseout',()=>{layer.resetStyle(l);});
-  l.on('click',()=>{showInfo(d); map.fitBounds(l.getBounds(),{maxZoom:11});});
+  l.on('click',()=>{showInfo(d,key); map.fitBounds(l.getBounds(),{maxZoom:11});});
   l.bindTooltip(d.nome,{permanent:true,direction:'center',className:'citylabel',opacity:1});}
-Promise.all([fetch('data.json').then(r=>r.json()),fetch('sp_mun.json').then(r=>r.json())]).then(([reg,gj])=>{
-  REG=reg;
+
+Promise.all([
+  fetch('data.json').then(r=>r.json()),
+  fetch('sp_mun.json').then(r=>r.json()),
+  fetch('emplac.json').then(r=>r.json()).catch(()=>({fabs:[],fams:[],rows:[]}))
+]).then(([reg,gj,emp])=>{
+  REG=reg; EMPLAC=emp;
   layer=L.geoJSON(gj,{style,onEachFeature:onEach,filter:f=>!!REG[norm(f.properties.name)]||true}).addTo(map);
-  // fit aos coloridos
   const b=L.latLngBounds([]); layer.eachLayer(l=>{const d=REG[norm(l.feature.properties.name)]; if(d)b.extend(l.getBounds());});
-  window.COLORED_BOUNDS=b;
-  map.fitBounds(b,{padding:[20,20]});
-  buildLegend();
+  window.COLORED_BOUNDS=b; map.fitBounds(b,{padding:[20,20]});
+  popularSelects();
+  aplicarFiltro();
 });
-function buildLegend(){
-  const cnt={MR1:[0,0],MR2:[0,0],MR3:[0,0]};
-  Object.values(REG).forEach(d=>{cnt[d.mr][0]++;cnt[d.mr][1]+=d.pin;});
+
+function volPorFab(){const m={};EMPLAC.rows.forEach(r=>{m[r[1]]=(m[r[1]]||0)+r[4];});return m;}
+function volPorFam(){const m={};EMPLAC.rows.forEach(r=>{m[r[2]]=(m[r[2]]||0)+r[4];});return m;}
+function popularSelects(){
+  const vf=volPorFab(), vm=volPorFam();
+  const fab=document.getElementById('fFab');
+  EMPLAC.fabs.map((n,i)=>[n,i]).sort((a,b)=>(vf[b[1]]||0)-(vf[a[1]]||0))
+    .forEach(([n,i])=>{if(!n||n==='?')return;const o=document.createElement('option');o.value=i;o.textContent=n+' ('+(vf[i]||0)+')';fab.appendChild(o);});
+  const fam=document.getElementById('fFam');
+  EMPLAC.fams.map((n,i)=>[n,i]).sort((a,b)=>(vm[b[1]]||0)-(vm[a[1]]||0))
+    .forEach(([n,i])=>{if(!n||n==='?')return;const o=document.createElement('option');o.value=i;o.textContent=n+' ('+(vm[i]||0)+')';fam.appendChild(o);});
+}
+
+function aplicarFiltro(){
+  const marca=document.getElementById('fMarca').value;
+  const fab=document.getElementById('fFab').value;
+  const fam=document.getElementById('fFam').value;
+  const fabN=fab===''?null:+fab, famN=fam===''?null:+fam;
+  FCOUNTS={}; let tot=0;
+  for(const r of EMPLAC.rows){
+    if(marca==='G'&&r[3]!==0)continue;
+    if(marca==='C'&&r[3]!==1)continue;
+    if(fabN!==null&&r[1]!==fabN)continue;
+    if(famN!==null&&r[2]!==famN)continue;
+    FCOUNTS[r[0]]=(FCOUNTS[r[0]]||0)+r[4]; tot+=r[4];
+  }
+  FMAX=1; for(const k in FCOUNTS){ if(REG[k]&&FCOUNTS[k]>FMAX)FMAX=FCOUNTS[k]; }
+  // atualiza rótulos das cidades
+  for(const key in byName){
+    const d=REG[key]; const q=FCOUNTS[key]||0;
+    byName[key].setTooltipContent(q>0?`${d.nome}<br><b>${q}</b>`:d.nome);
+  }
+  document.getElementById('fTot').innerHTML=`No filtro: <b>${tot}</b> emplac. · <b>${Object.keys(FCOUNTS).filter(k=>REG[k]).length}</b> cidades`;
+  if(layer) layer.setStyle(style);
+  atualizarLegenda();
+  if(CURKEY&&REG[CURKEY]) showInfo(REG[CURKEY],CURKEY);
+}
+
+function atualizarLegenda(){
+  const cntCity={MR1:0,MR2:0,MR3:0}, cntEmp={MR1:0,MR2:0,MR3:0};
+  Object.entries(REG).forEach(([k,d])=>{cntCity[d.mr]++; cntEmp[d.mr]+=(FCOUNTS[k]||0);});
   const el=document.getElementById('legend');
   el.innerHTML='<div style="font-weight:bold;margin-bottom:4px">Macrorregiões (clique p/ filtrar)</div>'+
-   ['MR1','MR2','MR3'].map(m=>`<div class="lg" data-mr="${m}"><span class="sw" style="background:${MRC[m]}"></span>
-      <span>${MRNAME[m]}<br><span class="k">${cnt[m][0]} cidades · ${cnt[m][1]} pinos</span></span></div>`).join('');
+   ['MR1','MR2','MR3'].map(m=>`<div class="lg${shown[m]?'':' off'}" data-mr="${m}"><span class="sw" style="background:${MRC[m]}"></span>
+      <span>${MRNAME[m]}<br><span class="k">${cntCity[m]} cidades · ${cntEmp[m]} emplac.</span></span></div>`).join('');
   el.querySelectorAll('.lg').forEach(e=>e.onclick=()=>{const m=e.dataset.mr;shown[m]=!shown[m];
     e.classList.toggle('off',!shown[m]); layer.setStyle(style);});
 }
+
+document.getElementById('fMarca').addEventListener('change',aplicarFiltro);
+document.getElementById('fFab').addEventListener('change',aplicarFiltro);
+document.getElementById('fFam').addEventListener('change',aplicarFiltro);
+document.getElementById('fHeat').addEventListener('change',e=>{HEAT=e.target.checked; if(layer)layer.setStyle(style);});
+document.getElementById('fLimpar').addEventListener('click',()=>{
+  document.getElementById('fMarca').value='T';document.getElementById('fFab').value='';document.getElementById('fFam').value='';
+  aplicarFiltro();});
+
 let _savedView=null;
-function fitParaImpressao(){
-  info.style.display='none';
-  if(window.COLORED_BOUNDS && window.COLORED_BOUNDS.isValid()){
+function fitParaImpressao(){info.style.display='none';
+  if(window.COLORED_BOUNDS&&window.COLORED_BOUNDS.isValid()){
     if(!_savedView) _savedView={c:map.getCenter(),z:map.getZoom()};
-    map.invalidateSize(false);
-    // centraliza as regiões coloridas no meio da folha
-    map.fitBounds(window.COLORED_BOUNDS,{padding:[10,10],animate:false});
-  }
-}
-function restaurarView(){
-  if(_savedView){ map.setView(_savedView.c,_savedView.z,{animate:false}); _savedView=null; }
-}
-function imprimirMapa(){ fitParaImpressao(); setTimeout(()=>window.print(),350); }
+    map.invalidateSize(false); map.fitBounds(window.COLORED_BOUNDS,{padding:[10,10],animate:false});}}
+function restaurarView(){if(_savedView){map.setView(_savedView.c,_savedView.z,{animate:false});_savedView=null;}}
+function imprimirMapa(){fitParaImpressao();setTimeout(()=>window.print(),350);}
 window.addEventListener('beforeprint',fitParaImpressao);
 window.addEventListener('afterprint',restaurarView);
 document.getElementById('q').addEventListener('input',e=>{const q=norm(e.target.value);
