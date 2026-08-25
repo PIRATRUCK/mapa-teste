@@ -55,7 +55,7 @@
   <label>Segmento (família de produto)</label>
   <select id="fFam"><option value="">Todos</option></select>
   <div class="tot" id="fTot">—</div>
-  <label class="mini"><input type="checkbox" id="fHeat" style="width:auto"> 🔥 destacar por volume</label>
+  <label class="mini"><input type="checkbox" id="fHeat" style="width:auto"> 🔥 destacar volume (10+ em destaque)</label>
   <span class="lnk" id="fLimpar">↺ limpar filtro</span>
 </div>
 <div class="panel" id="info"></div>
@@ -76,9 +76,13 @@ const info=document.getElementById('info');
 function style(f){const key=norm(f.properties.name);const d=REG[key];
   if(!d) return {fillColor:'#000',fillOpacity:0,color:'#bbb',weight:0.4,opacity:0};
   const on=shown[d.mr];
-  let op=on?0.72:0.05;
-  if(HEAT&&on){const q=FCOUNTS[key]||0; op=q>0?0.18+0.75*(q/FMAX):0.06;}
-  return {fillColor:MRC[d.mr],fillOpacity:op,color:'#fff',weight:on?1:0.4,opacity:on?1:0.3};}
+  let op=on?0.72:0.05, wt=on?1:0.4, bc='#fff';
+  if(HEAT&&on){const q=FCOUNTS[key]||0;
+    // faixas de volume: 10+ = alto volume (destaque), abaixo mais fraco
+    op = q>=10?0.92 : q>=5?0.5 : q>=1?0.28 : 0.06;
+    if(q>=10){ wt=2.5; bc='#111'; }        // borda escura destaca as cidades de volume
+  }
+  return {fillColor:MRC[d.mr],fillOpacity:op,color:bc,weight:wt,opacity:on?1:0.3};}
 
 function showInfo(d,key){CURKEY=key;info.style.display='block';
   const q=FCOUNTS[key]||0;
