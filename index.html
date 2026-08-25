@@ -24,6 +24,10 @@
   #filtro .tot b{display:inline;color:#C00000}
   #filtro .mini{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:#333;cursor:pointer;user-select:none}
   #filtro .lnk{color:#1e88e5;cursor:pointer;font-size:11px;margin-top:6px;display:inline-block}
+  #fonte{display:flex;gap:4px;margin-bottom:8px}
+  .fonte-bt{flex:1;padding:5px 4px;border:1px solid #ccc;background:#f7f7f7;border-radius:5px;font-size:11px;font-weight:bold;cursor:pointer;color:#555}
+  .fonte-bt.on{background:#C00000;color:#fff;border-color:#C00000}
+  #filtroCorpo.dim{opacity:.45;pointer-events:none}
   .leaflet-tooltip.city{font-weight:bold}
   .leaflet-tooltip.citylabel{background:transparent;border:none;box-shadow:none;color:#3b3b3b;opacity:.85;font-size:9px;font-weight:600;padding:0;white-space:nowrap;text-shadow:0 0 2px rgba(255,255,255,.9)}
   .leaflet-tooltip.citylabel::before{display:none}
@@ -44,6 +48,11 @@
 <div class="panel" id="search"><input id="q" placeholder="🔎 buscar cidade..." autocomplete="off"></div>
 <div class="panel" id="filtro">
   <b>🎛️ Filtro de emplacamentos (2026)</b>
+  <div id="fonte">
+    <button class="fonte-bt on" id="btEmplac">📄 Planilha 2026</button>
+    <button class="fonte-bt" id="btPinos">📌 Formato anterior</button>
+  </div>
+  <div id="filtroCorpo">
   <label>Marca</label>
   <select id="fMarca">
     <option value="T">Todas as marcas</option>
@@ -55,8 +64,9 @@
   <label>Segmento (família de produto)</label>
   <select id="fFam"><option value="">Todos</option></select>
   <div class="tot" id="fTot">—</div>
-  <label class="mini"><input type="checkbox" id="fHeat" style="width:auto"> 🔥 destacar volume (10+ em destaque)</label>
   <span class="lnk" id="fLimpar">↺ limpar filtro</span>
+  </div>
+  <label class="mini"><input type="checkbox" id="fHeat" style="width:auto"> 🔥 destacar volume (10+ em destaque)</label>
 </div>
 <div class="panel" id="info"></div>
 <div class="panel" id="legend"></div>
@@ -70,7 +80,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
   attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
 let REG={},layer,shown={MR1:true,MR2:true,MR3:true},byName={},keyByName={};
 let EMPLAC={fabs:[],fams:[],rows:[]};
-let FCOUNTS={}, FMAX=1, HEAT=false, CURKEY=null;
+let FCOUNTS={}, FMAX=1, HEAT=false, CURKEY=null, MODE='emplac';
 const info=document.getElementById('info');
 
 function style(f){const key=norm(f.properties.name);const d=REG[key];
@@ -86,10 +96,11 @@ function style(f){const key=norm(f.properties.name);const d=REG[key];
 
 function showInfo(d,key){CURKEY=key;info.style.display='block';
   const q=FCOUNTS[key]||0;
+  const lbl=MODE==='pinos'?'Pinos (formato anterior)':'Emplac. no filtro';
   info.innerHTML=`<h3>${d.nome}</h3>
    <div class="row"><span class="k">Macrorregião:</span> <b style="color:${MRC[d.mr]}">${d.mr}</b></div>
    <div class="row"><span class="k">Vendedor:</span> <b>${d.vend}</b></div>
-   <div class="row"><span class="k">Emplac. no filtro:</span> <b>${q}</b></div>`;}
+   <div class="row"><span class="k">${lbl}:</span> <b>${q}</b></div>`;}
 
 function onEach(f,l){const key=norm(f.properties.name);const d=REG[key]; if(!d)return;
   byName[key]=l; keyByName[key]=key;
@@ -124,28 +135,40 @@ function popularSelects(){
 }
 
 function aplicarFiltro(){
-  const marca=document.getElementById('fMarca').value;
-  const fab=document.getElementById('fFab').value;
-  const fam=document.getElementById('fFam').value;
-  const fabN=fab===''?null:+fab, famN=fam===''?null:+fam;
   FCOUNTS={}; let tot=0;
-  for(const r of EMPLAC.rows){
-    if(marca==='G'&&r[3]!==0)continue;
-    if(marca==='C'&&r[3]!==1)continue;
-    if(fabN!==null&&r[1]!==fabN)continue;
-    if(famN!==null&&r[2]!==famN)continue;
-    FCOUNTS[r[0]]=(FCOUNTS[r[0]]||0)+r[4]; tot+=r[4];
+  if(MODE==='pinos'){
+    // formato anterior: usa os "pinos" originais do mapa (data.json)
+    for(const k in REG){ const q=REG[k].pin||0; FCOUNTS[k]=q; tot+=q; }
+    document.getElementById('fTot').innerHTML=`Formato anterior: <b>${tot}</b> pinos · <b>${Object.keys(REG).length}</b> cidades`;
+  } else {
+    const marca=document.getElementById('fMarca').value;
+    const fab=document.getElementById('fFab').value;
+    const fam=document.getElementById('fFam').value;
+    const fabN=fab===''?null:+fab, famN=fam===''?null:+fam;
+    for(const r of EMPLAC.rows){
+      if(marca==='G'&&r[3]!==0)continue;
+      if(marca==='C'&&r[3]!==1)continue;
+      if(fabN!==null&&r[1]!==fabN)continue;
+      if(famN!==null&&r[2]!==famN)continue;
+      FCOUNTS[r[0]]=(FCOUNTS[r[0]]||0)+r[4]; tot+=r[4];
+    }
+    document.getElementById('fTot').innerHTML=`No filtro: <b>${tot}</b> emplac. · <b>${Object.keys(FCOUNTS).filter(k=>REG[k]).length}</b> cidades`;
   }
   FMAX=1; for(const k in FCOUNTS){ if(REG[k]&&FCOUNTS[k]>FMAX)FMAX=FCOUNTS[k]; }
-  // atualiza rótulos das cidades
   for(const key in byName){
     const d=REG[key]; const q=FCOUNTS[key]||0;
     byName[key].setTooltipContent(q>0?`${d.nome}<br><b>${q}</b>`:d.nome);
   }
-  document.getElementById('fTot').innerHTML=`No filtro: <b>${tot}</b> emplac. · <b>${Object.keys(FCOUNTS).filter(k=>REG[k]).length}</b> cidades`;
   if(layer) layer.setStyle(style);
   atualizarLegenda();
   if(CURKEY&&REG[CURKEY]) showInfo(REG[CURKEY],CURKEY);
+}
+function setMode(m){
+  MODE=m;
+  document.getElementById('btEmplac').classList.toggle('on',m==='emplac');
+  document.getElementById('btPinos').classList.toggle('on',m==='pinos');
+  document.getElementById('filtroCorpo').classList.toggle('dim',m==='pinos');
+  aplicarFiltro();
 }
 
 function atualizarLegenda(){
@@ -157,19 +180,23 @@ function atualizarLegenda(){
   const famSel=document.getElementById('fFam');
   const segNome=famSel.value===''?'todos os segmentos':famSel.options[famSel.selectedIndex].textContent.replace(/\s*\(\d+\)$/,'');
   const el=document.getElementById('legend');
+  const unid=MODE==='pinos'?'pinos':'emplac.';
   let head='';
   if(total>0){
     const pct=Math.round(100*cntEmp[lider]/total);
+    const txt=MODE==='pinos'?`<b>${lider}</b> tem mais <b>pinos</b> (formato anterior)`:`<b>${lider}</b> lidera em <b>${segNome}</b>`;
     head=`<div style="background:${MRC[lider]}22;border-left:4px solid ${MRC[lider]};border-radius:4px;padding:4px 7px;margin-bottom:6px;font-size:12px">
-      🏆 <b>${lider}</b> lidera em <b>${segNome}</b><br><span class="k">${cntEmp[lider]} de ${total} emplac. (${pct}%)</span></div>`;
+      🏆 ${txt}<br><span class="k">${cntEmp[lider]} de ${total} ${unid} (${pct}%)</span></div>`;
   }
   el.innerHTML=head+'<div style="font-weight:bold;margin-bottom:4px">Macrorregiões (clique p/ filtrar)</div>'+
    ['MR1','MR2','MR3'].map(m=>`<div class="lg${shown[m]?'':' off'}" data-mr="${m}"><span class="sw" style="background:${MRC[m]}"></span>
-      <span>${MRNAME[m]}${m===lider&&total>0?' 🏆':''}<br><span class="k">${cntCity[m]} cidades · <b>${cntEmp[m]}</b> emplac.</span></span></div>`).join('');
+      <span>${MRNAME[m]}${m===lider&&total>0?' 🏆':''}<br><span class="k">${cntCity[m]} cidades · <b>${cntEmp[m]}</b> ${unid}</span></span></div>`).join('');
   el.querySelectorAll('.lg').forEach(e=>e.onclick=()=>{const m=e.dataset.mr;shown[m]=!shown[m];
     e.classList.toggle('off',!shown[m]); layer.setStyle(style);});
 }
 
+document.getElementById('btEmplac').addEventListener('click',()=>setMode('emplac'));
+document.getElementById('btPinos').addEventListener('click',()=>setMode('pinos'));
 document.getElementById('fMarca').addEventListener('change',aplicarFiltro);
 document.getElementById('fFab').addEventListener('change',aplicarFiltro);
 document.getElementById('fFam').addEventListener('change',aplicarFiltro);
