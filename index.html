@@ -1,6 +1,6 @@
 <!doctype html><html lang="pt-br"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PIRATRUCK — Mapa de Regiões · CENÁRIO TESTE</title>
+<title>PIRATRUCK — Mapa de Regiões · CENÁRIO TESTE (só produtos Guerra)</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
   html,body{margin:0;height:100%;font-family:Arial,Helvetica,sans-serif}
@@ -24,6 +24,8 @@
   #filtro .tot b{display:inline;color:#C00000}
   #filtro .mini{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:#333;cursor:pointer;user-select:none}
   #filtro .lnk{color:#1e88e5;cursor:pointer;font-size:11px;margin-top:6px;display:inline-block}
+  #fFam label{display:flex;align-items:center;gap:5px;font-weight:normal;text-transform:none;letter-spacing:0;font-size:12px;color:#333;margin:2px 0;cursor:pointer}
+  #fFam input{width:auto;margin:0}
   .leaflet-tooltip.city{font-weight:bold}
   .leaflet-tooltip.citylabel{background:transparent;border:none;box-shadow:none;color:#3b3b3b;opacity:.85;font-size:9px;font-weight:600;padding:0;white-space:nowrap;text-shadow:0 0 2px rgba(255,255,255,.9)}
   .leaflet-tooltip.citylabel::before{display:none}
@@ -39,12 +41,23 @@
     .leaflet-container{background:#fff!important}
   }
 </style></head><body>
-<div class="titlebar"><button class="print-btn" onclick="imprimirMapa()">🖨️ Imprimir</button>🧪 PIRATRUCK — Mapa de Regiões (CENÁRIO TESTE) · <span style="font-weight:normal">R1 roxo · R2 amarelo · R3 azul · R4 verde</span></div>
+<div class="titlebar"><button class="print-btn" onclick="imprimirMapa()">🖨️ Imprimir</button>🧪 PIRATRUCK — Mapa de Regiões (CENÁRIO TESTE — só segmentos que a Guerra fabrica) · <span style="font-weight:normal">R1 roxo · R2 amarelo · R3 azul · R4 verde</span></div>
 <div id="map"></div>
 <div class="panel" id="search"><input id="q" placeholder="🔎 buscar cidade..." autocomplete="off"></div>
 <div class="panel" id="filtro">
   <b>🎛️ Potencial por cidade</b>
+  <label>Marca</label>
+  <select id="fMarca">
+    <option value="T">Todas as marcas</option>
+    <option value="G">Só Guerra (nossa)</option>
+    <option value="C">Só concorrentes</option>
+  </select>
+  <label>Fabricante</label>
+  <select id="fFab"><option value="">Todos</option></select>
+  <label>Segmento (família de produto) <span class="lnk" id="fFamTodos" style="margin:0">marcar/limpar todos</span></label>
+  <div id="fFam" style="max-height:130px;overflow-y:auto;border:1px solid #ccc;border-radius:5px;padding:4px 6px;background:#fafafa"></div>
   <div class="tot" id="fTot">—</div>
+  <span class="lnk" id="fLimpar">↺ voltar pro formato anterior (pinos)</span>
   <label class="mini"><input type="checkbox" id="fHeat" style="width:auto"> 🔥 destacar volume (10+ em destaque)</label>
 </div>
 <div class="panel" id="info"></div>
@@ -59,7 +72,14 @@ const map=L.map('map',{preferCanvas:true}).setView([-22.9,-47.6],8);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
   attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
 let REG={},layer,shown={R1:true,R2:true,R3:true,R4:true},byName={},keyByName={};
+let EMPLAC={fabs:[],fams:[],rows:[]};
 let FCOUNTS={}, FMAX=1, HEAT=false, CURKEY=null;
+function famSelecionados(){
+  return Array.from(document.querySelectorAll('#fFam input:checked')).map(el=>+el.value);
+}
+function filtroAtivo(){
+  return document.getElementById('fMarca').value!=='T' || document.getElementById('fFab').value!=='' || famSelecionados().length>0;
+}
 const info=document.getElementById('info');
 
 function style(f){const key=norm(f.properties.name);const d=REG[key];
@@ -74,7 +94,7 @@ function style(f){const key=norm(f.properties.name);const d=REG[key];
 
 function showInfo(d,key){CURKEY=key;info.style.display='block';
   const q=FCOUNTS[key]||0;
-  const lbl='Pinos';
+  const lbl=filtroAtivo()?'Emplac. no filtro':'Pinos (formato anterior)';
   info.innerHTML=`<h3>${d.nome}</h3>
    <div class="row"><span class="k">Macrorregião:</span> <b style="color:${MRC[d.mr]}">${d.mr}</b></div>
    <div class="row"><span class="k">Vendedor:</span> <b>${d.vend}</b></div>
@@ -89,19 +109,51 @@ function onEach(f,l){const key=norm(f.properties.name);const d=REG[key]; if(!d)r
 
 Promise.all([
   fetch('data.json').then(r=>r.json()),
-  fetch('sp_mun.json').then(r=>r.json())
-]).then(([reg,gj])=>{
-  REG=reg;
+  fetch('sp_mun.json').then(r=>r.json()),
+  fetch('emplac.json').then(r=>r.json()).catch(()=>({fabs:[],fams:[],rows:[]}))
+]).then(([reg,gj,emp])=>{
+  REG=reg; EMPLAC=emp;
   layer=L.geoJSON(gj,{style,onEachFeature:onEach,filter:f=>!!REG[norm(f.properties.name)]||true}).addTo(map);
   const b=L.latLngBounds([]); layer.eachLayer(l=>{const d=REG[norm(l.feature.properties.name)]; if(d)b.extend(l.getBounds());});
   window.COLORED_BOUNDS=b; map.fitBounds(b,{padding:[20,20]});
+  popularSelects();
   aplicarFiltro();
 });
 
+function volPorFab(){const m={};EMPLAC.rows.forEach(r=>{m[r[1]]=(m[r[1]]||0)+r[4];});return m;}
+function volPorFam(){const m={};EMPLAC.rows.forEach(r=>{m[r[2]]=(m[r[2]]||0)+r[4];});return m;}
+function popularSelects(){
+  const vf=volPorFab(), vm=volPorFam();
+  const fab=document.getElementById('fFab');
+  EMPLAC.fabs.map((n,i)=>[n,i]).sort((a,b)=>(vf[b[1]]||0)-(vf[a[1]]||0))
+    .forEach(([n,i])=>{if(!n||n==='?')return;const o=document.createElement('option');o.value=i;o.textContent=n+' ('+(vf[i]||0)+')';fab.appendChild(o);});
+  const fam=document.getElementById('fFam');
+  EMPLAC.fams.map((n,i)=>[n,i]).sort((a,b)=>(vm[b[1]]||0)-(vm[a[1]]||0))
+    .forEach(([n,i])=>{if(!n||n==='?')return;
+      const lbl=document.createElement('label');
+      lbl.innerHTML=`<input type="checkbox" value="${i}"> ${n} (${vm[i]||0})`;
+      fam.appendChild(lbl);});
+}
+
 function aplicarFiltro(){
   FCOUNTS={}; let tot=0;
-  for(const k in REG){ const q=REG[k].pin||0; FCOUNTS[k]=q; tot+=q; }
-  document.getElementById('fTot').innerHTML=`<b>${tot}</b> pinos · <b>${Object.keys(REG).length}</b> cidades`;
+  if(!filtroAtivo()){
+    for(const k in REG){ const q=REG[k].pin||0; FCOUNTS[k]=q; tot+=q; }
+    document.getElementById('fTot').innerHTML=`Formato anterior: <b>${tot}</b> pinos · <b>${Object.keys(REG).length}</b> cidades`;
+  } else {
+    const marca=document.getElementById('fMarca').value;
+    const fab=document.getElementById('fFab').value;
+    const famSel=famSelecionados();
+    const fabN=fab===''?null:+fab;
+    for(const r of EMPLAC.rows){
+      if(marca==='G'&&r[3]!==0)continue;
+      if(marca==='C'&&r[3]!==1)continue;
+      if(fabN!==null&&r[1]!==fabN)continue;
+      if(famSel.length&&!famSel.includes(r[2]))continue;
+      FCOUNTS[r[0]]=(FCOUNTS[r[0]]||0)+r[4]; tot+=r[4];
+    }
+    document.getElementById('fTot').innerHTML=`No filtro: <b>${tot}</b> emplac. · <b>${Object.keys(FCOUNTS).filter(k=>REG[k]).length}</b> cidades`;
+  }
   FMAX=1; for(const k in FCOUNTS){ if(REG[k]&&FCOUNTS[k]>FMAX)FMAX=FCOUNTS[k]; }
   for(const key in byName){
     const d=REG[key]; const q=FCOUNTS[key]||0;
@@ -118,11 +170,12 @@ function atualizarLegenda(){
   const ord=MRLIST.slice().sort((a,b)=>cntEmp[b]-cntEmp[a]);
   const lider=ord[0], total=MRLIST.reduce((s,m)=>s+cntEmp[m],0);
   const el=document.getElementById('legend');
-  const unid='pinos';
+  const ativo=filtroAtivo();
+  const unid=ativo?'emplac.':'pinos';
   let head='';
   if(total>0){
     const pct=Math.round(100*cntEmp[lider]/total);
-    const txt=`<b>${lider}</b> tem mais <b>pinos</b>`;
+    const txt=ativo?`<b>${lider}</b> lidera no filtro`:`<b>${lider}</b> tem mais <b>pinos</b> (formato anterior)`;
     head=`<div style="background:${MRC[lider]}22;border-left:4px solid ${MRC[lider]};border-radius:4px;padding:4px 7px;margin-bottom:6px;font-size:12px">
       🏆 ${txt}<br><span class="k">${cntEmp[lider]} de ${total} ${unid} (${pct}%)</span></div>`;
   }
@@ -133,7 +186,19 @@ function atualizarLegenda(){
     e.classList.toggle('off',!shown[m]); layer.setStyle(style);});
 }
 
+document.getElementById('fMarca').addEventListener('change',aplicarFiltro);
+document.getElementById('fFab').addEventListener('change',aplicarFiltro);
+document.getElementById('fFam').addEventListener('change',aplicarFiltro);
 document.getElementById('fHeat').addEventListener('change',e=>{HEAT=e.target.checked; if(layer)layer.setStyle(style);});
+document.getElementById('fLimpar').addEventListener('click',()=>{
+  document.getElementById('fMarca').value='T';document.getElementById('fFab').value='';
+  document.querySelectorAll('#fFam input').forEach(c=>c.checked=false);
+  aplicarFiltro();});
+document.getElementById('fFamTodos').addEventListener('click',()=>{
+  const boxes=document.querySelectorAll('#fFam input');
+  const marcar=famSelecionados().length<boxes.length;
+  boxes.forEach(c=>c.checked=marcar);
+  aplicarFiltro();});
 
 // Impressão WYSIWYG: imprime no MESMO zoom/posição que está na tela (não reajusta sozinho)
 function prepararImpressao(){info.style.display='none'; map.invalidateSize(false);}
